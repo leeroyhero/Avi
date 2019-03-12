@@ -69,8 +69,10 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         MapAirportInfo airportInfoStart=(MapAirportInfo) getArguments().getSerializable("start_city");
         MapAirportInfo airportInfoEnd=(MapAirportInfo) getArguments().getSerializable("end_city");
 
+        ArrayList<LatLng> path=getPath(airportInfoStart.getLatLng(), airportInfoEnd.getLatLng());
+
         PolylineOptions polylineOptions = new PolylineOptions()
-                .addAll(getPath(airportInfoStart.getLatLng(), airportInfoEnd.getLatLng()))
+                .addAll(path)
                 .geodesic(true)
                 .width(12)
                 .color(Color.BLUE);
@@ -98,14 +100,31 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         float length=(float) Math.sqrt(Math.pow(startLatLang.latitude-endLatLang.latitude, 2)+Math.pow(startLatLang.longitude-endLatLang.longitude, 2));
         float angle= (float) ((startLatLang.latitude-endLatLang.latitude)/(startLatLang.longitude-endLatLang.longitude));
 
+
+
         Log.d(TAG, "length: "+length+" angle: "+angle);
 
-        for (float i=0; i<length; i++)
+        float sin=(float) Math.sin(angle);
+        float cos=(float) Math.cos(angle);
+
+        list.add(startLatLang);
+        for (float i=0; i<length; i+=1)
         {
-            list.add(new LatLng(Math.sin(i+angle), i));
+            float x=(startLatLang.longitude-endLatLang.longitude)>0?(i*-1):i;
+
+            float latitude=(float) (Math.sin((x*2*Math.PI)/length));
+            float longitude=x;
+
+            float newLat=(float) (((longitude*sin+latitude*cos))+startLatLang.latitude);
+            float newLon=(float) (((longitude*cos+latitude*sin))+startLatLang.longitude);
+
+            list.add(new LatLng(newLat, newLon));
         }
+        list.add(endLatLang);
 
 
         return  list;
     }
+
+
 }
