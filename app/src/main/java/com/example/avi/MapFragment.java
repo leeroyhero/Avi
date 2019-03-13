@@ -15,6 +15,7 @@ import android.view.View;
 import android.view.ViewGroup;
 
 import com.example.avi.item.MapAirportInfo;
+import com.example.avi.item.PathItem;
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
@@ -44,8 +45,8 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
     private static final List<PatternItem> PATTERN_DOTTED = Arrays.asList(DOT, GAP);
     private static final String TAG = "MapFragment";
     private SupportMapFragment mapFragment;
-    private static final float STEP = 0.05f;
-    private static final int PLANE_SPEED = 100;
+    private static final float STEP = 0.04f;
+    private static final int PLANE_SPEED = 50;
 
     public MapFragment() {
         // Required empty public constructor
@@ -74,10 +75,14 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         MapAirportInfo airportInfoStart = (MapAirportInfo) getArguments().getSerializable("start_city");
         MapAirportInfo airportInfoEnd = (MapAirportInfo) getArguments().getSerializable("end_city");
 
-        ArrayList<LatLng> path = getPath(airportInfoStart.getLatLng(), airportInfoEnd.getLatLng());
+        ArrayList<PathItem> path = getPath(airportInfoStart.getLatLng(), airportInfoEnd.getLatLng());
+
+        ArrayList<LatLng> line=new ArrayList<>();
+        for(PathItem pathItem:path)
+            line.add(pathItem.getLatLng());
 
         PolylineOptions polylineOptions = new PolylineOptions()
-                .addAll(path)
+                .addAll(line)
                 .geodesic(true)
                 .width(12)
                 .color(Color.BLUE);
@@ -99,29 +104,33 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         startPlane(path, googleMap);
     }
 
-    private void startPlane(final ArrayList<LatLng> path, GoogleMap googleMap) {
+    private void startPlane(final ArrayList<PathItem> path, GoogleMap googleMap) {
         final Marker plane = googleMap.addMarker(new MarkerOptions()
-                .position(path.get(0))
-                .anchor(0.5f, 0.5f)
+                .position(path.get(0).getLatLng())
+                .rotation(path.get(0).getAngle())
+                .anchor(0.7f, 0.5f)
                 .icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_plane)));
 
-        final int[] pos = {0};
+        final int[] pos = {1};
         final Handler handler = new Handler();
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 pos[0]++;
-                plane.setPosition(path.get(pos[0]));
+                plane.setPosition(path.get(pos[0]).getLatLng());
+                plane.setRotation(path.get(pos[0]).getAngle());
+                Log.d(TAG, "rotation: "+path.get(pos[0]).getAngle());
+                if (pos[0]<path.size()-3)
                 handler.postDelayed(this, PLANE_SPEED);
             }
         }, PLANE_SPEED);
     }
 
-    private ArrayList<LatLng> getPath(LatLng startLatLang, LatLng endLatLang) {
-        ArrayList<LatLng> list = new ArrayList<>();
+    private ArrayList<PathItem> getPath(LatLng startLatLang, LatLng endLatLang) {
+        ArrayList<PathItem> list = new ArrayList<>();
 
         float length = (float) Math.sqrt(Math.pow(startLatLang.latitude - endLatLang.latitude, 2) + Math.pow(startLatLang.longitude - endLatLang.longitude, 2));
-        float angle = (float) ((startLatLang.latitude - endLatLang.latitude) / (startLatLang.longitude - endLatLang.longitude));
+        float angle = getAngle(startLatLang, endLatLang);
 
 
         Log.d(TAG, "length: " + length + " angle: " + angle);
@@ -130,22 +139,40 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         float cos = (float) Math.cos(angle);
 
 
-        list.add(startLatLang);
-        for (float i = 0; i < length - 1; i += STEP) {
+        list.add(new PathItem(startLatLang, 0));
+        for (float i = 0; i < length; i += STEP) {
             float x = (startLatLang.longitude - endLatLang.longitude) > 0 ? (i * -1) : i;
 
-            float latitude = (float) (Math.sin((x * 2 * Math.PI) / length));
+            float latitude = (float) (2*Math.sin((x * 2 * Math.PI) / length));
             float longitude = x;
 
             float newLat = (float) (((longitude * sin + latitude * cos)) + startLatLang.latitude);
             float newLon = (float) (((longitude * cos + latitude * sin)) + startLatLang.longitude);
 
-            list.add(new LatLng(newLat, newLon));
+            LatLng latLng=new LatLng(newLat, newLon);
+             list.add(new PathItem(latLng, 0));
         }
-        list.add(endLatLang);
+       // list.add(new PathItem(endLatLang,0));
 
+        for (int i=1; i<list.size()-2;i++)
+        {
+            PathItem pathItem=list.get(i);
+            pathItem.setAngle(getAngleDegrees(list.get(i-1).getLatLng(), list.get(i+1).getLatLng()));
+        }
 
         return list;
+    }
+
+    private float getAngle(LatLng startLatLang, LatLng endLatLang){
+        return (float) ((startLatLang.latitude - endLatLang.latitude) / (startLatLang.longitude - endLatLang.longitude));
+    }
+
+    private float getAngleDegrees(LatLng startLatLang, LatLng endLatLang){
+        if (startLatLang.longitude>endLatLang.longitude)
+        return (float) (((startLatLang.latitude - endLatLang.latitude) / (startLatLang.longitude - endLatLang.longitude))*(180/Math.PI))*-1+180;
+        else
+        return (float) (((startLatLang.latitude - endLatLang.latitude) / (startLatLang.longitude - endLatLang.longitude))*(180/Math.PI))*-1;
+       // return (float) Math.tan(((startLatLang.latitude - endLatLang.latitude) / (startLatLang.longitude - endLatLang.longitude))/(Math.PI*180));
     }
 
 
