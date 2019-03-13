@@ -8,6 +8,7 @@ import android.os.Bundle;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import android.os.Handler;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -19,11 +20,13 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.Dot;
 import com.google.android.gms.maps.model.Gap;
 import com.google.android.gms.maps.model.JointType;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
+import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PatternItem;
 import com.google.android.gms.maps.model.Polyline;
@@ -41,6 +44,8 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
     private static final List<PatternItem> PATTERN_DOTTED = Arrays.asList(DOT, GAP);
     private static final String TAG = "MapFragment";
     private SupportMapFragment mapFragment;
+    private static final float STEP = 0.05f;
+    private static final int PLANE_SPEED = 100;
 
     public MapFragment() {
         // Required empty public constructor
@@ -51,8 +56,8 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
         // Inflate the layout for this fragment
-        View view=inflater.inflate(R.layout.fragment_map, container, false);
-        mapFragment=(SupportMapFragment) getChildFragmentManager()
+        View view = inflater.inflate(R.layout.fragment_map, container, false);
+        mapFragment = (SupportMapFragment) getChildFragmentManager()
                 .findFragmentById(R.id.map);
 
         return view;
@@ -66,17 +71,17 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
-        MapAirportInfo airportInfoStart=(MapAirportInfo) getArguments().getSerializable("start_city");
-        MapAirportInfo airportInfoEnd=(MapAirportInfo) getArguments().getSerializable("end_city");
+        MapAirportInfo airportInfoStart = (MapAirportInfo) getArguments().getSerializable("start_city");
+        MapAirportInfo airportInfoEnd = (MapAirportInfo) getArguments().getSerializable("end_city");
 
-        ArrayList<LatLng> path=getPath(airportInfoStart.getLatLng(), airportInfoEnd.getLatLng());
+        ArrayList<LatLng> path = getPath(airportInfoStart.getLatLng(), airportInfoEnd.getLatLng());
 
         PolylineOptions polylineOptions = new PolylineOptions()
                 .addAll(path)
                 .geodesic(true)
                 .width(12)
                 .color(Color.BLUE);
-        Polyline polyline=googleMap.addPolyline(polylineOptions);
+        Polyline polyline = googleMap.addPolyline(polylineOptions);
         polyline.setPattern(PATTERN_DOTTED);
         polyline.setJointType(JointType.ROUND);
         polyline.setStartCap(new RoundCap());
@@ -88,42 +93,59 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         int width = getResources().getDisplayMetrics().widthPixels;
         int height = getResources().getDisplayMetrics().heightPixels;
         int padding = (int) (width * 0.12);
-        CameraUpdate cameraUpdate=CameraUpdateFactory.newLatLngBounds(builder.build(), width, height,padding);
+        CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLngBounds(builder.build(), width, height, padding);
         googleMap.moveCamera(cameraUpdate);
 
-        getPath(airportInfoStart.getLatLng(), airportInfoEnd.getLatLng());
+        startPlane(path, googleMap);
     }
 
-    private ArrayList<LatLng> getPath(LatLng startLatLang, LatLng endLatLang){
-        ArrayList<LatLng> list=new ArrayList<>();
+    private void startPlane(final ArrayList<LatLng> path, GoogleMap googleMap) {
+        final Marker plane = googleMap.addMarker(new MarkerOptions()
+                .position(path.get(0))
+                .anchor(0.5f, 0.5f)
+                .icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_plane)));
 
-        float length=(float) Math.sqrt(Math.pow(startLatLang.latitude-endLatLang.latitude, 2)+Math.pow(startLatLang.longitude-endLatLang.longitude, 2));
-        float angle= (float) ((startLatLang.latitude-endLatLang.latitude)/(startLatLang.longitude-endLatLang.longitude));
+        final int[] pos = {0};
+        final Handler handler = new Handler();
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                pos[0]++;
+                plane.setPosition(path.get(pos[0]));
+                handler.postDelayed(this, PLANE_SPEED);
+            }
+        }, PLANE_SPEED);
+    }
+
+    private ArrayList<LatLng> getPath(LatLng startLatLang, LatLng endLatLang) {
+        ArrayList<LatLng> list = new ArrayList<>();
+
+        float length = (float) Math.sqrt(Math.pow(startLatLang.latitude - endLatLang.latitude, 2) + Math.pow(startLatLang.longitude - endLatLang.longitude, 2));
+        float angle = (float) ((startLatLang.latitude - endLatLang.latitude) / (startLatLang.longitude - endLatLang.longitude));
 
 
+        Log.d(TAG, "length: " + length + " angle: " + angle);
 
-        Log.d(TAG, "length: "+length+" angle: "+angle);
+        float sin = (float) Math.sin(angle);
+        float cos = (float) Math.cos(angle);
 
-        float sin=(float) Math.sin(angle);
-        float cos=(float) Math.cos(angle);
 
         list.add(startLatLang);
-        for (float i=0; i<length; i+=1)
-        {
-            float x=(startLatLang.longitude-endLatLang.longitude)>0?(i*-1):i;
+        for (float i = 0; i < length - 1; i += STEP) {
+            float x = (startLatLang.longitude - endLatLang.longitude) > 0 ? (i * -1) : i;
 
-            float latitude=(float) (Math.sin((x*2*Math.PI)/length));
-            float longitude=x;
+            float latitude = (float) (Math.sin((x * 2 * Math.PI) / length));
+            float longitude = x;
 
-            float newLat=(float) (((longitude*sin+latitude*cos))+startLatLang.latitude);
-            float newLon=(float) (((longitude*cos+latitude*sin))+startLatLang.longitude);
+            float newLat = (float) (((longitude * sin + latitude * cos)) + startLatLang.latitude);
+            float newLon = (float) (((longitude * cos + latitude * sin)) + startLatLang.longitude);
 
             list.add(new LatLng(newLat, newLon));
         }
         list.add(endLatLang);
 
 
-        return  list;
+        return list;
     }
 
 
